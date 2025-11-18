@@ -1,6 +1,11 @@
+
+
 import { useState } from 'react';
 import axios from 'axios';
 import './App.css';
+import BusquedaPacientes from './BusquedaPacientes';
+import PlanTratamientoForm from './PlanTratamientoForm';
+import AsignarPlan from './AsignarPlan';
 
 interface Paciente {
   id?: number;
@@ -12,6 +17,7 @@ interface Paciente {
   telefono: string;
   causa_emergencia: string;
 }
+
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -30,6 +36,13 @@ function App() {
     telefono: '',
     causa_emergencia: ''
   });
+  // Simulación de planes de tratamiento y asignaciones (en un sistema real, esto vendría del backend)
+  const [planes, setPlanes] = useState([
+    { id: 1, nombre: 'Plan Básico', descripcion: 'Reposo y analgésicos.' },
+    { id: 2, nombre: 'Plan Avanzado', descripcion: 'Observación y exámenes de laboratorio.' }
+  ]);
+  const [asignaciones, setAsignaciones] = useState<{ [pacienteId: number]: number[] }>({});
+  const [showPlanForm, setShowPlanForm] = useState(false);
 
   const handleLogin = () => {
     if (username === import.meta.env.VITE_ADMIN_USER && password === import.meta.env.VITE_ADMIN_PASS) {
@@ -211,6 +224,25 @@ function App() {
           <button onClick={loadPacientes} className="refresh-button">
             Actualizar Lista
           </button>
+          <button onClick={() => setShowPlanForm(true)} className="register-button">
+            Crear Plan de Tratamiento
+          </button>
+
+          {/* Formulario para crear/editar planes de tratamiento */}
+          {showPlanForm && (
+            <PlanTratamientoForm
+              onSubmit={plan => {
+                setPlanes(prev => [
+                  ...prev,
+                  { id: prev.length + 1, ...plan }
+                ]);
+                setShowPlanForm(false);
+              }}
+            />
+          )}
+
+          {/* Componente de búsqueda de pacientes */}
+          <BusquedaPacientes />
 
           <div className="pacientes-list">
             <h2>Pacientes Registrados</h2>
@@ -222,6 +254,29 @@ function App() {
                 <p><strong>Teléfono:</strong> {paciente.telefono}</p>
                 <p><strong>Ingreso:</strong> {new Date(paciente.fecha_hora_ingreso).toLocaleString()}</p>
                 <p><strong>Causa:</strong> {paciente.causa_emergencia}</p>
+                {/* Botón para asignar plan */}
+                <AsignarPlan
+                  pacienteId={paciente.id!}
+                  planes={planes}
+                  onAsignar={planId => {
+                    setAsignaciones(prev => ({
+                      ...prev,
+                      [paciente.id!]: [...(prev[paciente.id!] || []), planId]
+                    }));
+                  }}
+                />
+                {/* Mostrar lista de planes asignados */}
+                <div style={{ marginTop: 8 }}>
+                  <strong>Planes asignados:</strong>
+                  <ul>
+                    {(asignaciones[paciente.id!] || []).map(pid => {
+                      const plan = planes.find(p => p.id === pid);
+                      return plan ? (
+                        <li key={pid}><b>{plan.nombre}</b>: {plan.descripcion}</li>
+                      ) : null;
+                    })}
+                  </ul>
+                </div>
                 <div className="paciente-actions">
                   <button onClick={() => handleEdit(paciente)} className="edit-button">Editar</button>
                   <button onClick={() => handleDelete(paciente.id!)} className="delete-button">Eliminar</button>

@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -11,6 +12,22 @@ app.use(express.json());
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+});
+// Buscar pacientes por cédula o nombre
+app.get('/pacientes/buscar', async (req, res) => {
+  const q = (req.query.q as string)?.trim();
+  if (!q) {
+    return res.status(400).json({ error: 'Debe proporcionar un parámetro de búsqueda (q)' });
+  }
+  try {
+    const result = await pool.query(
+      `SELECT * FROM pacientes WHERE identificacion ILIKE $1 OR nombre ILIKE $1 OR apellido ILIKE $1`,
+      [`%${q}%`]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al buscar pacientes' });
+  }
 });
 
 app.get('/', (req, res) => {
