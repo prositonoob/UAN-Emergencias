@@ -231,12 +231,25 @@ function App() {
           {/* Formulario para crear/editar planes de tratamiento */}
           {showPlanForm && (
             <PlanTratamientoForm
-              onSubmit={plan => {
-                setPlanes(prev => [
-                  ...prev,
-                  { id: prev.length + 1, ...plan }
-                ]);
-                setShowPlanForm(false);
+              onSubmit={async plan => {
+                try {
+                  const response = await fetch('http://localhost:3000/planes', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(plan),
+                  });
+                  if (!response.ok) {
+                    throw new Error('Error al crear el plan');
+                  }
+                  const nuevoPlan = await response.json();
+                  setPlanes(prev => [...prev, nuevoPlan]);
+                  setShowPlanForm(false);
+                } catch (error) {
+                  alert('No se pudo crear el plan de tratamiento.');
+                  console.error(error);
+                }
               }}
             />
           )}
