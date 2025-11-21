@@ -6,6 +6,7 @@ import './App.css';
 import BusquedaPacientes from './BusquedaPacientes';
 import PlanTratamientoForm from './PlanTratamientoForm';
 import AsignarPlan from './AsignarPlan';
+import HistorialClinico from './HistorialClinico';
 
 interface Paciente {
   id?: number;
@@ -37,19 +38,34 @@ function App() {
     causa_emergencia: ''
   });
   // Simulación de planes de tratamiento y asignaciones (en un sistema real, esto vendría del backend)
-  const [planes, setPlanes] = useState([
+  const [planes, setPlanes] = useState<{ id: number; nombre: string; descripcion: string }[]>([
     { id: 1, nombre: 'Plan Básico', descripcion: 'Reposo y analgésicos.' },
     { id: 2, nombre: 'Plan Avanzado', descripcion: 'Observación y exámenes de laboratorio.' }
   ]);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [loginBlocked, setLoginBlocked] = useState(false);
   const [asignaciones, setAsignaciones] = useState<{ [pacienteId: number]: number[] }>({});
   const [showPlanForm, setShowPlanForm] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
+  const [showHistorialModal, setShowHistorialModal] = useState(false);
+  const [pacienteSeleccionado, setPacienteSeleccionado] = useState<number | null>(null);
+  const [modoHistorial, setModoHistorial] = useState<'ver' | 'agregar' | null>(null);
 
   const handleLogin = () => {
+    if (loginBlocked) return;
     if (username === import.meta.env.VITE_ADMIN_USER && password === import.meta.env.VITE_ADMIN_PASS) {
       setIsLoggedIn(true);
       setShowLogin(false);
+      setLoginAttempts(0);
     } else {
-      alert('Credenciales incorrectas');
+      const attempts = loginAttempts + 1;
+      setLoginAttempts(attempts);
+      if (attempts >= 5) {
+        setLoginBlocked(true);
+        alert('Demasiados intentos fallidos. El acceso ha sido bloqueado hasta recargar la página.');
+      } else {
+        alert(`Credenciales incorrectas. Intento ${attempts} de 5.`);
+      }
     }
   };
 
@@ -116,6 +132,21 @@ function App() {
   };
 
   if (isLoggedIn) {
+    // Mostrar historial clínico si está activo
+    if (showHistorial && pacienteSeleccionado) {
+      return (
+        <HistorialClinico
+          pacienteId={pacienteSeleccionado}
+          modoInicial={modoHistorial || 'ver'}
+          onVolver={() => {
+            setShowHistorial(false);
+            setPacienteSeleccionado(null);
+            setModoHistorial(null);
+          }}
+        />
+      );
+    }
+
     if (showForm) {
       return (
         <div className="form-container">
@@ -257,6 +288,47 @@ function App() {
           {/* Componente de búsqueda de pacientes */}
           <BusquedaPacientes />
 
+          {/* Modal para opciones de historial clínico */}
+          {showHistorialModal && (
+            <div className="modal-overlay">
+              <div className="modal-box">
+                <h2>📋 Historial Clínico</h2>
+                <p>¿Qué desea hacer con el historial del paciente?</p>
+                <div className="modal-buttons">
+                  <button
+                    onClick={() => {
+                      setModoHistorial('ver');
+                      setShowHistorialModal(false);
+                      setShowHistorial(true);
+                    }}
+                    className="modal-primary-button"
+                  >
+                    👁️ Ver Historial Completo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setModoHistorial('agregar');
+                      setShowHistorialModal(false);
+                      setShowHistorial(true);
+                    }}
+                    className="modal-secondary-button"
+                  >
+                    ➕ Agregar Nueva Entrada
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowHistorialModal(false);
+                      setPacienteSeleccionado(null);
+                    }}
+                    className="modal-cancel-button"
+                  >
+                    ❌ Cancelar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="pacientes-list">
             <h2>Pacientes Registrados</h2>
             {pacientes.map((paciente) => (
@@ -291,6 +363,15 @@ function App() {
                   </ul>
                 </div>
                 <div className="paciente-actions">
+                  <button
+                    onClick={() => {
+                      setPacienteSeleccionado(paciente.id!);
+                      setShowHistorialModal(true);
+                    }}
+                    className="historial-button"
+                  >
+                    Ver Historial
+                  </button>
                   <button onClick={() => handleEdit(paciente)} className="edit-button">Editar</button>
                   <button onClick={() => handleDelete(paciente.id!)} className="delete-button">Eliminar</button>
                 </div>
@@ -323,9 +404,14 @@ function App() {
               onChange={(e) => setPassword(e.target.value)}
               className="login-input"
             />
-            <button onClick={handleLogin} className="login-button">
-              Ingresar
+            <button onClick={handleLogin} className="login-button" disabled={loginBlocked}>
+              {loginBlocked ? 'Bloqueado' : 'Ingresar'}
             </button>
+            {loginBlocked && (
+              <div style={{ color: 'red', marginTop: 10 }}>
+                Acceso bloqueado por demasiados intentos fallidos.<br />Recarga la página para intentarlo de nuevo.
+              </div>
+            )}
             <button onClick={() => setShowLogin(false)} className="cancel-button">
               Volver
             </button>

@@ -1,3 +1,11 @@
+-- Tabla de historial clínico
+CREATE TABLE historial_clinico (
+    id SERIAL PRIMARY KEY,
+    paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
+    fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notas TEXT,
+    alergias TEXT
+);
 CREATE TABLE pacientes (
     id SERIAL PRIMARY KEY,
     fecha_hora_ingreso TIMESTAMP NOT NULL,

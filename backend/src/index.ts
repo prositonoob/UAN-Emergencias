@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -188,7 +189,78 @@ app.get('/pacientes/buscar', async (req, res) => {
 });
 
 // ==========================================================
-// 5. INICIO DEL SERVIDOR
+// 5. ENDPOINTS PARA HISTORIAL CLÍNICO
+// ==========================================================
+
+// Obtener historial clínico completo de un paciente
+app.get('/pacientes/:id/historial', async (req, res) => {
+  const pacienteId = req.params.id;
+  try {
+    // Obtener información del paciente
+    const pacienteResult = await pool.query(
+      'SELECT * FROM pacientes WHERE id = $1',
+      [pacienteId]
+    );
+
+    if (pacienteResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Paciente no encontrado' });
+    }
+
+    const paciente = pacienteResult.rows[0];
+
+    // Obtener entradas del historial ordenadas por fecha descendente
+    const historialResult = await pool.query(
+      'SELECT * FROM historial_clinico WHERE paciente_id = $1 ORDER BY fecha DESC',
+      [pacienteId]
+    );
+
+    // Obtener planes de tratamiento activos
+    const planesResult = await pool.query(
+      `SELECT pt.id, pt.nombre, pt.descripcion, pp.fecha_asignacion
+       FROM paciente_plan pp
+       JOIN planes_tratamiento pt ON pp.plan_id = pt.id
+       WHERE pp.paciente_id = $1
+       ORDER BY pp.fecha_asignacion DESC`,
+      [pacienteId]
+    );
+
+    // Construir respuesta completa
+    const historialCompleto = {
+      paciente: paciente,
+      entradas: historialResult.rows,
+      planes_activos: planesResult.rows,
+      // Extraer alergias de la entrada más reciente o consolidar
+      alergias: historialResult.rows.length > 0 && historialResult.rows[0].alergias
+        ? historialResult.rows[0].alergias
+        : 'No registradas'
+    };
+
+    res.json(historialCompleto);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener historial clínico' });
+  }
+});
+
+// Crear nueva entrada en el historial clínico
+app.post('/pacientes/:id/historial', async (req, res) => {
+  const pacienteId = req.params.id;
+  const { notas, alergias } = req.body;
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO historial_clinico (paciente_id, notas, alergias) VALUES ($1, $2, $3) RETURNING *',
+      [pacienteId, notas, alergias || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear entrada en historial clínico' });
+  }
+});
+
+// ==========================================================
+// 6. INICIO DEL SERVIDOR
 // ==========================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

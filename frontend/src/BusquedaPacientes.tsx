@@ -6,6 +6,7 @@ import axios from 'axios';
 const BusquedaPacientes: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState<any[]>([]);
+  const [pacienteExacto, setPacienteExacto] = useState<any|null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,14 +18,26 @@ const BusquedaPacientes: React.FC = () => {
     setCargando(true);
     setError('');
     setResultados([]);
+    setPacienteExacto(null);
     try {
-      // Cambia la URL según tu endpoint real
       const response = await axios.get(`http://localhost:3000/pacientes/buscar`, {
         params: { q: busqueda }
       });
-      setResultados(response.data);
-      if (response.data.length === 0) {
-        setError('No se encontraron pacientes.');
+      const data = response.data;
+      // Buscar coincidencia exacta
+      const exacto = data.find((p: any) =>
+        p.identificacion?.toLowerCase() === busqueda.toLowerCase() ||
+        p.nombre?.toLowerCase() === busqueda.toLowerCase() ||
+        p.apellido?.toLowerCase() === busqueda.toLowerCase()
+      );
+      if (exacto) {
+        setPacienteExacto(exacto);
+        setResultados([]);
+      } else {
+        setResultados(data);
+        if (data.length === 0) {
+          setError('No se encontraron pacientes.');
+        }
       }
     } catch (err) {
       setError('Error al buscar pacientes.');
@@ -47,13 +60,25 @@ const BusquedaPacientes: React.FC = () => {
       </button>
       {cargando && <p>Buscando...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      <ul>
-        {resultados.map((paciente, idx) => (
-          <li key={idx}>
-            {paciente.nombre} {paciente.apellido} (Cédula: {paciente.identificacion})
-          </li>
-        ))}
-      </ul>
+      {pacienteExacto ? (
+        <div style={{ marginTop: 16, border: '1px solid #007bff', borderRadius: 8, padding: 16, background: '#f4faff' }}>
+          <h3>Ficha del Paciente</h3>
+          <p><b>Nombre:</b> {pacienteExacto.nombre} {pacienteExacto.apellido}</p>
+          <p><b>Cédula:</b> {pacienteExacto.identificacion}</p>
+          <p><b>RH:</b> {pacienteExacto.rh}</p>
+          <p><b>Teléfono:</b> {pacienteExacto.telefono}</p>
+          <p><b>Ingreso:</b> {new Date(pacienteExacto.fecha_hora_ingreso).toLocaleString()}</p>
+          <p><b>Causa:</b> {pacienteExacto.causa_emergencia}</p>
+        </div>
+      ) : (
+        <ul>
+          {resultados.map((paciente, idx) => (
+            <li key={idx}>
+              {paciente.nombre} {paciente.apellido} (Cédula: {paciente.identificacion})
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
