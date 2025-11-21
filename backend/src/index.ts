@@ -8,7 +8,6 @@ dotenv.config();
 
 // ==========================================================
 // 1. INICIALIZACIÓN Y CONFIGURACIÓN DEL SERVIDOR
-// (Se mueve a la parte superior para que 'app' esté disponible)
 // ==========================================================
 const app = express();
 app.use(cors());
@@ -29,6 +28,7 @@ interface Paciente {
   identificacion: string;
   telefono?: string;
   causa_emergencia: string;
+  estado?: 'ingresado' | 'internado' | 'alta';
 }
 
 // Ruta de prueba
@@ -188,6 +188,31 @@ app.get('/pacientes/buscar', async (req, res) => {
   }
 });
 
+// Actualizar estado del paciente (Internación/Alta)
+app.patch('/pacientes/:id/estado', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+
+  if (!['ingresado', 'internado', 'alta'].includes(estado)) {
+    return res.status(400).json({ error: 'Estado inválido' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE pacientes SET estado = $1 WHERE id = $2 RETURNING *',
+      [estado, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Paciente no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar estado del paciente' });
+  }
+});
+
 // ==========================================================
 // 5. ENDPOINTS PARA HISTORIAL CLÍNICO
 // ==========================================================
@@ -259,6 +284,9 @@ app.post('/pacientes/:id/historial', async (req, res) => {
   }
 });
 
+// ==========================================================
+// 6. ENDPOINTS PARA MEDICAMENTOS
+// ==========================================================
 
 // Listar todas las categorías de medicamentos
 app.get('/categorias-medicamentos', async (req, res) => {
@@ -480,7 +508,7 @@ app.get('/medicamentos-estadisticas', async (req, res) => {
 });
 
 // ==========================================================
-// 6. INICIO DEL SERVIDOR
+// 7. INICIO DEL SERVIDOR
 // ==========================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

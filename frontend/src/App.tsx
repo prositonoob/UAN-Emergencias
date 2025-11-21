@@ -18,6 +18,7 @@ interface Paciente {
   identificacion: string;
   telefono: string;
   causa_emergencia: string;
+  estado?: 'ingresado' | 'internado' | 'alta';
 }
 
 
@@ -100,13 +101,37 @@ function App() {
       });
       setShowForm(false);
       setEditingPaciente(null);
-      loadPacientes();
+      cargarPacientes();
     } catch (error) {
       alert(editingPaciente ? 'Error al actualizar paciente' : 'Error al registrar paciente');
     }
   };
 
-  const loadPacientes = async () => {
+  const handleCambiarEstado = async (pacienteId: number, nuevoEstado: string, nombrePaciente: string) => {
+    try {
+      const response = await axios.patch(`http://localhost:3000/pacientes/${pacienteId}/estado`, {
+        estado: nuevoEstado
+      });
+
+      if (response.status === 200) {
+        // Actualizar lista local
+        setPacientes(prev => prev.map(p =>
+          p.id === pacienteId ? { ...p, estado: nuevoEstado as any } : p
+        ));
+
+        const mensaje = nuevoEstado === 'internado'
+          ? `Paciente ${nombrePaciente} ha sido INTERNADO. Se ha notificado al personal de planta.`
+          : `Paciente ${nombrePaciente} ha sido dado de ALTA. Se ha generado la orden de salida.`;
+
+        alert(mensaje);
+      }
+    } catch (error) {
+      console.error('Error al cambiar estado:', error);
+      alert('Error al actualizar el estado del paciente.');
+    }
+  };
+
+  const cargarPacientes = async () => {
     try {
       const response = await axios.get('http://localhost:3000/pacientes');
       setPacientes(response.data);
@@ -126,7 +151,7 @@ function App() {
       try {
         await axios.delete(`http://localhost:3000/pacientes/${id}`);
         alert('Paciente eliminado exitosamente');
-        loadPacientes();
+        cargarPacientes();
       } catch (error) {
         alert('Error al eliminar paciente');
       }
@@ -263,7 +288,7 @@ function App() {
           <button onClick={() => setShowForm(true)} className="register-button">
             Registrar Nuevo Paciente
           </button>
-          <button onClick={loadPacientes} className="refresh-button">
+          <button onClick={cargarPacientes} className="refresh-button">
             Actualizar Lista
           </button>
           <button onClick={() => setShowPlanForm(true)} className="register-button">
@@ -353,6 +378,31 @@ function App() {
                 <p><strong>Teléfono:</strong> {paciente.telefono}</p>
                 <p><strong>Ingreso:</strong> {new Date(paciente.fecha_hora_ingreso).toLocaleString()}</p>
                 <p><strong>Causa:</strong> {paciente.causa_emergencia}</p>
+                <div className={`estado-badge estado-${paciente.estado || 'ingresado'}`}>
+                  {paciente.estado === 'internado' ? '🏥 INTERNADO' :
+                    paciente.estado === 'alta' ? '🏠 DE ALTA' : '📥 INGRESADO'}
+                </div>
+
+                <div className="estado-actions">
+                  {(paciente.estado === undefined || paciente.estado === 'ingresado') && (
+                    <button
+                      className="btn-internar"
+                      onClick={() => handleCambiarEstado(paciente.id!, 'internado', paciente.nombre)}
+                    >
+                      🏥 Internar
+                    </button>
+                  )}
+
+                  {(paciente.estado === 'ingresado' || paciente.estado === 'internado') && (
+                    <button
+                      className="btn-alta"
+                      onClick={() => handleCambiarEstado(paciente.id!, 'alta', paciente.nombre)}
+                    >
+                      🏠 Dar de Alta
+                    </button>
+                  )}
+                </div>
+
                 {/* Botón para asignar plan */}
                 <AsignarPlan
                   pacienteId={paciente.id!}
