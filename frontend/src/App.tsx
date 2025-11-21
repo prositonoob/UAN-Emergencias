@@ -7,6 +7,7 @@ import BusquedaPacientes from './BusquedaPacientes';
 import PlanTratamientoForm from './PlanTratamientoForm';
 import AsignarPlan from './AsignarPlan';
 import HistorialClinico from './HistorialClinico';
+import GestionMedicamentos from './GestionMedicamentos';
 
 interface Paciente {
   id?: number;
@@ -50,6 +51,7 @@ function App() {
   const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<number | null>(null);
   const [modoHistorial, setModoHistorial] = useState<'ver' | 'agregar' | null>(null);
+  const [showMedicamentos, setShowMedicamentos] = useState(false);
 
   const handleLogin = () => {
     if (loginBlocked) return;
@@ -132,6 +134,15 @@ function App() {
   };
 
   if (isLoggedIn) {
+    // Mostrar gestión de medicamentos si está activo
+    if (showMedicamentos) {
+      return (
+        <GestionMedicamentos
+          onVolver={() => setShowMedicamentos(false)}
+        />
+      );
+    }
+
     // Mostrar historial clínico si está activo
     if (showHistorial && pacienteSeleccionado) {
       return (
@@ -257,6 +268,9 @@ function App() {
           </button>
           <button onClick={() => setShowPlanForm(true)} className="register-button">
             Crear Plan de Tratamiento
+          </button>
+          <button onClick={() => setShowMedicamentos(true)} className="medicamentos-button">
+            💊 Gestionar Medicamentos
           </button>
 
           {/* Formulario para crear/editar planes de tratamiento */}

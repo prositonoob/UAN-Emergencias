@@ -1,0 +1,223 @@
+// ==========================================================
+// ENDPOINTS PARA GESTIÓN DE MEDICAMENTOS
+// Agregar este código ANTES de "// INICIO DEL SERVIDOR" en index.ts
+// ==========================================================
+
+// Listar todas las categorías de medicamentos
+app.get('/categorias-medicamentos', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM categorias_medicamentos ORDER BY nombre');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener categorías de medicamentos' });
+  }
+});
+
+// Crear nueva categoría
+app.post('/categorias-medicamentos', async (req, res) => {
+  const { nombre, descripcion } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO categorias_medicamentos (nombre, descripcion) VALUES ($1, $2) RETURNING *',
+      [nombre, descripcion]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear categoría' });
+  }
+});
+
+// Listar medicamentos con filtros opcionales
+app.get('/medicamentos', async (req, res) => {
+  const { categoria, busqueda, stock_bajo } = req.query;
+  
+  try {
+    let query = `
+      SELECT m.*, c.nombre as categoria_nombre
+      FROM medicamentos m
+      LEFT JOIN categorias_medicamentos c ON m.categoria_id = c.id
+      WHERE m.activo = true
+    `;
+    const params: any[] = [];
+    let paramCount = 1;
+
+    // Filtro por categoría
+    if (categoria) {
+      query += ` AND m.categoria_id = $${paramCount}`;
+      params.push(categoria);
+      paramCount++;
+    }
+
+    // Búsqueda por nombre
+    if (busqueda) {
+      query += ` AND (m.nombre ILIKE $${paramCount} OR m.nombre_generico ILIKE $${paramCount})`;
+      params.push(`%${busqueda}%`);
+      paramCount++;
+    }
+
+    // Filtro de stock bajo
+    if (stock_bajo === 'true') {
+      query += ` AND m.stock_actual < m.stock_minimo`;
+    }
+
+    query += ` ORDER BY m.nombre`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener medicamentos' });
+  }
+});
+
+// Obtener un medicamento específico
+app.get('/medicamentos/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT m.*, c.nombre as categoria_nombre
+       FROM medicamentos m
+       LEFT JOIN categorias_medicamentos c ON m.categoria_id = c.id
+       WHERE m.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Medicamento no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener medicamento' });
+  }
+});
+
+// Crear nuevo medicamento
+app.post('/medicamentos', async (req, res) => {
+  const {
+    nombre,
+    nombre_generico,
+    categoria_id,
+    descripcion,
+    presentacion,
+    stock_actual,
+    stock_minimo,
+    precio_unitario,
+    requiere_receta
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO medicamentos 
+       (nombre, nombre_generico, categoria_id, descripcion, presentacion, 
+        stock_actual, stock_minimo, precio_unitario, requiere_receta)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [nombre, nombre_generico, categoria_id, descripcion, presentacion,
+       stock_actual, stock_minimo, precio_unitario, requiere_receta]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al crear medicamento' });
+  }
+});
+
+// Actualizar medicamento
+app.put('/medicamentos/:id', async (req, res) => {
+  const { id } = req.params;
+  const {
+    nombre,
+    nombre_generico,
+    categoria_id,
+    descripcion,
+    presentacion,
+    stock_actual,
+    stock_minimo,
+    precio_unitario,
+    requiere_receta
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE medicamentos 
+       SET nombre = $1, nombre_generico = $2, categoria_id = $3, descripcion = $4,
+           presentacion = $5, stock_actual = $6, stock_minimo = $7,
+           precio_unitario = $8, requiere_receta = $9, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 RETURNING *`,
+      [nombre, nombre_generico, categoria_id, descripcion, presentacion,
+       stock_actual, stock_minimo, precio_unitario, requiere_receta, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Medicamento no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar medicamento' });
+  }
+});
+
+// Eliminar medicamento (marcar como inactivo)
+app.delete('/medicamentos/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'UPDATE medicamentos SET activo = false WHERE id = $1 RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Medicamento no encontrado' });
+    }
+    res.json({ message: 'Medicamento desactivado', medicamento: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar medicamento' });
+  }
+});
+
+// Actualizar stock de medicamento
+app.patch('/medicamentos/:id/stock', async (req, res) => {
+  const { id } = req.params;
+  const { stock_actual } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE medicamentos SET stock_actual = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [stock_actual, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Medicamento no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar stock' });
+  }
+});
+
+// Obtener estadísticas de medicamentos
+app.get('/medicamentos-estadisticas', async (req, res) => {
+  try {
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) as total FROM medicamentos WHERE activo = true'
+    );
+    const stockBajoResult = await pool.query(
+      'SELECT COUNT(*) as stock_bajo FROM medicamentos WHERE activo = true AND stock_actual < stock_minimo'
+    );
+    const categoriasResult = await pool.query(
+      'SELECT COUNT(*) as categorias FROM categorias_medicamentos'
+    );
+
+    res.json({
+      total: parseInt(totalResult.rows[0].total),
+      stock_bajo: parseInt(stockBajoResult.rows[0].stock_bajo),
+      categorias: parseInt(categoriasResult.rows[0].categorias)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener estadísticas' });
+  }
+});
