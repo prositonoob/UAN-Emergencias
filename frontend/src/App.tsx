@@ -19,6 +19,7 @@ interface Paciente {
   telefono: string;
   causa_emergencia: string;
   estado?: 'ingresado' | 'internado' | 'alta';
+  email?: string;
 }
 
 
@@ -37,7 +38,8 @@ function App() {
     rh: '',
     identificacion: '',
     telefono: '',
-    causa_emergencia: ''
+    causa_emergencia: '',
+    email: ''
   });
   // Simulación de planes de tratamiento y asignaciones (en un sistema real, esto vendría del backend)
   const [planes, setPlanes] = useState<{ id: number; nombre: string; descripcion: string }[]>([
@@ -97,7 +99,8 @@ function App() {
         rh: '',
         identificacion: '',
         telefono: '',
-        causa_emergencia: ''
+        causa_emergencia: '',
+        email: ''
       });
       setShowForm(false);
       setEditingPaciente(null);
@@ -155,6 +158,31 @@ function App() {
       } catch (error) {
         alert('Error al eliminar paciente');
       }
+    }
+  };
+
+  const handleEnviarCorreo = async (pacienteId: number, planId: number, pacienteEmail: string | undefined) => {
+    if (!pacienteEmail) {
+      alert('Este paciente no tiene un correo electrónico registrado. Por favor, actualiza su información primero.');
+      return;
+    }
+
+    if (!window.confirm(`¿Enviar plan de tratamiento a ${pacienteEmail}?`)) {
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `http://localhost:3000/pacientes/${pacienteId}/planes/${planId}/enviar-correo`
+      );
+
+      if (response.data.success) {
+        alert(`✅ ${response.data.message}`);
+      }
+    } catch (error: any) {
+      console.error('Error al enviar correo:', error);
+      const mensajeError = error.response?.data?.error || 'Error al enviar el correo electrónico';
+      alert(`❌ ${mensajeError}`);
     }
   };
 
@@ -241,6 +269,14 @@ function App() {
                 onChange={handleInputChange}
                 className="form-input"
                 required
+              />
+              <input
+                type="email"
+                name="email"
+                placeholder="Correo electrónico"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="form-input"
               />
               <textarea
                 name="causa_emergencia"
@@ -407,11 +443,24 @@ function App() {
                 <AsignarPlan
                   pacienteId={paciente.id!}
                   planes={planes}
-                  onAsignar={planId => {
-                    setAsignaciones(prev => ({
-                      ...prev,
-                      [paciente.id!]: [...(prev[paciente.id!] || []), planId]
-                    }));
+                  onAsignar={async (planId) => {
+                    try {
+                      // Guardar en la base de datos
+                      await axios.post(`http://localhost:3000/pacientes/${paciente.id}/asignar-plan`, {
+                        plan_id: planId
+                      });
+
+                      // Actualizar estado local
+                      setAsignaciones(prev => ({
+                        ...prev,
+                        [paciente.id!]: [...(prev[paciente.id!] || []), planId]
+                      }));
+
+                      alert('✅ Plan asignado exitosamente al paciente');
+                    } catch (error) {
+                      console.error('Error al asignar plan:', error);
+                      alert('❌ Error al asignar plan al paciente');
+                    }
                   }}
                 />
                 {/* Mostrar lista de planes asignados */}
@@ -421,7 +470,28 @@ function App() {
                     {(asignaciones[paciente.id!] || []).map(pid => {
                       const plan = planes.find(p => p.id === pid);
                       return plan ? (
-                        <li key={pid}><b>{plan.nombre}</b>: {plan.descripcion}</li>
+                        <li key={pid} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                          <span><b>{plan.nombre}</b>: {plan.descripcion}</span>
+                          <button
+                            onClick={() => handleEnviarCorreo(paciente.id!, plan.id, paciente.email)}
+                            className="email-button"
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '12px',
+                              backgroundColor: '#4CAF50',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title={paciente.email ? `Enviar a ${paciente.email}` : 'No hay email registrado'}
+                          >
+                            📧 Enviar
+                          </button>
+                        </li>
                       ) : null;
                     })}
                   </ul>
@@ -442,8 +512,8 @@ function App() {
               </div>
             ))}
           </div>
-        </main>
-      </div>
+        </main >
+      </div >
     );
   }
 

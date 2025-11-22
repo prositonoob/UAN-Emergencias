@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
+import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -18,6 +19,17 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// ==========================================================
+// CONFIGURACIÓN DE NODEMAILER PARA GMAIL
+// ==========================================================
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
+
 // Definición de la interfaz para el tipado de datos del paciente
 interface Paciente {
   id?: number;
@@ -29,6 +41,65 @@ interface Paciente {
   telefono?: string;
   causa_emergencia: string;
   estado?: 'ingresado' | 'internado' | 'alta';
+  email?: string;
+}
+
+// Función para generar el HTML del plan de tratamiento
+function generarHtmlPlan(paciente: Paciente, plan: any): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .label { font-weight: bold; color: #667eea; margin-top: 10px; }
+        .value { margin: 5px 0 15px 0; }
+        .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0; color: #888; font-size: 12px; }
+        .plan-title { color: #764ba2; font-size: 20px; margin-bottom: 15px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📋 Plan de Tratamiento</h1>
+        <p>Sistema de Atención Médica de Pacientes (SAMP)</p>
+      </div>
+      <div class="content">
+        <div class="info-box">
+          <div class="plan-title">${plan.nombre}</div>
+          <div class="label">Paciente:</div>
+          <div class="value">${paciente.nombre} ${paciente.apellido}</div>
+          
+          <div class="label">Identificación:</div>
+          <div class="value">${paciente.identificacion}</div>
+          
+          <div class="label">Descripción del Plan:</div>
+          <div class="value">${plan.descripcion}</div>
+          
+          <div class="label">Fecha de Asignación:</div>
+          <div class="value">${new Date(plan.fecha_asignacion).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })}</div>
+        </div>
+        
+        <div class="info-box" style="background: #fff9e6; border-left: 4px solid #ffc107;">
+          <strong>⚠️ Importante:</strong>
+          <p>Este plan de tratamiento ha sido elaborado por su médico tratante. Por favor, siga las indicaciones cuidadosamente y consulte con el personal de salud ante cualquier duda.</p>
+        </div>
+      </div>
+      <div class="footer">
+        <p>Este correo fue generado automáticamente por el SAMP</p>
+        <p>Por favor, no responda a este correo electrónico</p>
+      </div>
+    </body>
+    </html>
+  `;
 }
 
 // Ruta de prueba
@@ -104,6 +175,66 @@ app.get('/pacientes/:id/planes', async (req, res) => {
   }
 });
 
+// Enviar plan de tratamiento por correo
+app.post('/pacientes/:id/planes/:planId/enviar-correo', async (req, res) => {
+  const pacienteId = req.params.id;
+  const planId = req.params.planId;
+
+  try {
+    // Obtener información del paciente
+    const pacienteResult = await pool.query(
+      'SELECT * FROM pacientes WHERE id = $1',
+      [pacienteId]
+    );
+
+    if (pacienteResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Paciente no encontrado' });
+    }
+
+    const paciente = pacienteResult.rows[0];
+
+    // Verificar que el paciente tenga email
+    if (!paciente.email) {
+      return res.status(400).json({ error: 'El paciente no tiene un correo electrónico registrado' });
+    }
+
+    // Obtener información del plan
+    const planResult = await pool.query(
+      `SELECT pt.id, pt.nombre, pt.descripcion, pp.fecha_asignacion
+       FROM paciente_plan pp
+       JOIN planes_tratamiento pt ON pp.plan_id = pt.id
+       WHERE pp.paciente_id = $1 AND pt.id = $2`,
+      [pacienteId, planId]
+    );
+
+    if (planResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Plan de tratamiento no encontrado o no está asignado a este paciente' });
+    }
+
+    const plan = planResult.rows[0];
+
+    // Generar HTML del correo
+    const htmlContent = generarHtmlPlan(paciente, plan);
+
+    // Enviar email
+    await transporter.sendMail({
+      from: `"SAMP - Hospital" <${process.env.GMAIL_USER}>`,
+      to: paciente.email,
+      subject: `Plan de Tratamiento: ${plan.nombre}`,
+      html: htmlContent
+    });
+
+    res.json({
+      success: true,
+      message: `Plan de tratamiento enviado exitosamente a ${paciente.email}`
+    });
+
+  } catch (err) {
+    console.error('Error al enviar correo:', err);
+    res.status(500).json({ error: 'Error al enviar el correo electrónico' });
+  }
+});
+
 // ==========================================================
 // 4. ENDPOINTS PARA PACIENTES
 // ==========================================================
@@ -121,11 +252,11 @@ app.get('/pacientes', async (req, res) => {
 
 // Crear un nuevo paciente
 app.post('/pacientes', async (req, res) => {
-  const { fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia }: Paciente = req.body;
+  const { fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, email }: Paciente = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO pacientes (fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia]
+      'INSERT INTO pacientes (fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, email]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -137,11 +268,11 @@ app.post('/pacientes', async (req, res) => {
 // Actualizar un paciente por ID
 app.put('/pacientes/:id', async (req, res) => {
   const { id } = req.params;
-  const { fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia }: Paciente = req.body;
+  const { fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, email }: Paciente = req.body;
   try {
     const result = await pool.query(
-      'UPDATE pacientes SET fecha_hora_ingreso = $1, nombre = $2, apellido = $3, rh = $4, identificacion = $5, telefono = $6, causa_emergencia = $7 WHERE id = $8 RETURNING *',
-      [fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, id]
+      'UPDATE pacientes SET fecha_hora_ingreso = $1, nombre = $2, apellido = $3, rh = $4, identificacion = $5, telefono = $6, causa_emergencia = $7, email = $8 WHERE id = $9 RETURNING *',
+      [fecha_hora_ingreso, nombre, apellido, rh, identificacion, telefono, causa_emergencia, email, id]
     );
     // Verifica si se encontró y actualizó el paciente
     if (result.rows.length === 0) {
@@ -286,7 +417,7 @@ app.post('/pacientes/:id/historial', async (req, res) => {
 
 // ==========================================================
 // 6. ENDPOINTS PARA MEDICAMENTOS
-// ==========================================================
+// ======================================== ==================
 
 // Listar todas las categorías de medicamentos
 app.get('/categorias-medicamentos', async (req, res) => {
